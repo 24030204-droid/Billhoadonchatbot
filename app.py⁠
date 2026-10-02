@@ -1,0 +1,174 @@
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+
+# Cấu hình giao diện trang
+st.set_page_config(
+    page_title="Hóa Đơn Quán Trà Sữa",
+    page_icon="🧋",
+    layout="centered"
+)
+
+# Bảng giá chuẩn
+BASE_PRICES = {
+    "Trà sữa truyền thống": 25000,
+    "Trà sữa Oolong nướng": 30000,
+    "Trà sữa Thái xanh": 28000,
+    "Trà sữa Matcha": 35000,
+    "Trà đào cam sả": 32000,
+    "Sữa tươi trân châu đường đen": 35000
+}
+
+SIZE_SURCHARGE = {
+    "Size M (Vừa)": 0,
+    "Size L (+6.000đ)": 6000,
+    "Size XL (+10.000đ)": 10000
+}
+
+TOPPING_PRICES = {
+    "Trân châu đen (+5.000đ)": 5000,
+    "Trân châu trắng (+7.000đ)": 7000,
+    "Thạch pudding (+8.000đ)": 8000,
+    "Kem cheese (+10.000đ)": 10000,
+    "Thạch nha đam (+6.000đ)": 6000
+}
+
+# Khởi tạo trạng thái giỏ hàng
+if "cart" not in st.session_state:
+    st.session_state.cart = []
+if "paid" not in st.session_state:
+    st.session_state.paid = False
+
+st.title("🧋 Ứng Dụng Đặt & Tính Hóa Đơn Trà Sữa")
+
+# 1. Thông tin khách hàng
+st.subheader("1. Thông tin khách hàng")
+customer_name = st.text_input("Tên khách hàng:", placeholder="Nhập tên khách hàng...")
+
+# 2. Chọn món & Tùy biến
+st.subheader("2. Chọn món")
+
+col1, col2 = st.columns([2, 1])
+with col1:
+    selected_drink = st.selectbox("Loại trà sữa:", list(BASE_PRICES.keys()))
+with col2:
+    quantity = st.number_input("Số lượng:", min_value=1, max_value=50, value=1, step=1)
+
+col3, col4, col5 = st.columns(3)
+with col3:
+    selected_size = st.selectbox("Size ly:", list(SIZE_SURCHARGE.keys()))
+with col4:
+    sweetness = st.select_slider("Độ ngọt (Đường):", options=["0%", "30%", "50%", "70%", "100%"], value="70%")
+with col5:
+    ice = st.select_slider("Mức đá:", options=["Nóng", "Không đá", "30%", "50%", "100%"], value="50%")
+
+selected_toppings = st.multiselect("Topping kèm theo:", list(TOPPING_PRICES.keys()))
+
+# Tính đơn giá cho từng ly
+drink_base = BASE_PRICES[selected_drink]
+size_extra = SIZE_SURCHARGE[selected_size]
+topping_extra = sum(TOPPING_PRICES[t] for t in selected_toppings)
+unit_price = drink_base + size_extra + topping_extra
+item_total = unit_price * quantity
+
+st.caption(f"Tạm tính món đang chọn: **{item_total:,.0f} đ** ({quantity} x {unit_price:,.0f} đ/ly)")
+
+# Nút thêm món vào giỏ
+if st.button("➕ Thêm vào giỏ hàng"):
+    if not customer_name.strip():
+        st.warning("Vui lòng nhập tên khách hàng trước khi thêm món!")
+    else:
+        clean_size = selected_size.split(" (")[0]
+        clean_toppings = [t.split(" (")[0] for t in selected_toppings]
+        
+        st.session_state.cart.append({
+            "Loại món": selected_drink,
+            "Size": clean_size,
+            "Đường/Đá": f"{sweetness} đường / {ice} đá",
+            "Topping": ", ".join(clean_toppings) if clean_toppings else "Không",
+            "Số lượng": quantity,
+            "Đơn giá (VNĐ)": unit_price,
+            "Thành tiền (VNĐ)": item_total
+        })
+        st.session_state.paid = False  # Reset trạng thái thanh toán khi có thay đổi
+        st.success(f"Đã thêm **{quantity}x {selected_drink}** vào đơn hàng!")
+
+# 3. Giỏ hàng & Danh sách đã nhập
+if st.session_state.cart:
+    st.divider()
+    st.subheader("3. Danh sách món đã chọn")
+    
+    df_cart = pd.DataFrame(st.session_state.cart)
+    st.dataframe(df_cart, use_container_width=True, hide_index=True)
+    
+    grand_total = sum(item["Thành tiền (VNĐ)"] for item in st.session_state.cart)
+    st.markdown(f"### Tổng tiền cần thanh toán: :red[{grand_total:,.0f} VNĐ]")
+    
+    btn_col1, btn_col2 = st.columns([1, 1])
+    with btn_col1:
+        if st.button("💳 Thanh Toán & Xuất Hóa Đơn", type="primary", use_container_width=True):
+            st.session_state.paid = True
+    with btn_col2:
+        if st.button("🗑️ Xóa Giỏ Hàng", use_container_width=True):
+            st.session_state.cart = []
+            st.session_state.paid = False
+            st.rerun()
+
+# 4. Xuất hóa đơn
+if st.session_state.paid and st.session_state.cart:
+    st.divider()
+    bill_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    grand_total = sum(item["Thành tiền (VNĐ)"] for item in st.session_state.cart)
+    
+    st.markdown(
+        f"""
+        <div style="border: 2px dashed #ff4b4b; border-radius: 12px; padding: 24px; background-color: #fdfdfd; color: #222;">
+            <h2 style="text-align: center; margin-bottom: 4px; color: #ff4b4b;">HÓA ĐƠN BÁN HÀNG</h2>
+            <p style="text-align: center; margin: 0; color: #666;">Trà Sữa Nhà Làm - Hân Hạnh Phục Vụ</p>
+            <hr style="margin: 16px 0; border: none; border-top: 1px solid #ddd;">
+            <p><strong>Thời gian:</strong> {bill_time}</p>
+            <p><strong>Khách hàng:</strong> {customer_name.strip()}</p>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px;">
+                <thead>
+                    <tr style="border-bottom: 2px solid #bbb; text-align: left;">
+                        <th style="padding: 6px 0;">Món & Tuỳ chọn</th>
+                        <th style="padding: 6px 0; text-align: center;">SL</th>
+                        <th style="padding: 6px 0; text-align: right;">Đơn giá</th>
+                        <th style="padding: 6px 0; text-align: right;">Tiền</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Hiển thị từng dòng hóa đơn
+    for item in st.session_state.cart:
+        st.markdown(
+            f"""
+            <tr style="border-bottom: 1px dotted #ccc;">
+                <td style="padding: 6px 0;">
+                    <b>{item['Loại món']}</b> ({item['Size']})<br>
+                    <small style="color: #666;">- {item['Đường/Đá']}<br>- Topping: {item['Topping']}</small>
+                </td>
+                <td style="padding: 6px 0; text-align: center;">{item['Số lượng']}</td>
+                <td style="padding: 6px 0; text-align: right;">{item['Đơn giá (VNĐ)']:,.0f}</td>
+                <td style="padding: 6px 0; text-align: right;">{item['Thành tiền (VNĐ)']:,.0f}</td>
+            </tr>
+            """,
+            unsafe_allow_html=True
+        )
+
+    st.markdown(
+        f"""
+                </tbody>
+            </table>
+            <div style="margin-top: 20px; text-align: right;">
+                <h3 style="margin: 0; color: #ff4b4b;">TỔNG CỘNG: {grand_total:,.0f} VNĐ</h3>
+                <p style="color: green; margin: 4px 0 0 0; font-weight: bold;">✔ ĐÃ THANH TOÁN THÀNH CÔNG</p>
+            </div>
+            <p style="text-align: center; margin-top: 24px; font-style: italic; color: #888;">Cảm ơn quý khách và hẹn gặp lại!</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
